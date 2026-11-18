@@ -56,11 +56,24 @@ input[type=text],input[type=number]{width:100%;padding:10px;border:1px solid var
 .empty{text-align:center;padding:40px 16px;color:var(--mute)}
 .empty .btn{background:var(--pri);color:#fff;margin-top:12px}
 .foot{display:flex;gap:8px}.foot .btn{flex:1;background:#fff;border:1px solid var(--line);color:var(--mute);font-weight:400}
+#login{position:fixed;inset:0;background:var(--bg);z-index:9;display:flex;align-items:center;justify-content:center;padding:20px}
+#login[hidden]{display:none}
+.lc{background:#fff;border-radius:12px;padding:20px;width:100%;max-width:360px;border:1px solid var(--line)}
+.lc input{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;margin:6px 0;font:inherit}
+#err{color:var(--bad);font-size:13px;min-height:18px}
+.sub{font-size:12px;opacity:.85;margin:-6px 0 8px;min-height:16px}
 </style>
 </head>
 <body>
+<div id="login" hidden><div class="lc"><h2>登入永旭科技財務紀錄</h2>
+<input type="text" id="em" placeholder="電子信箱" autocomplete="username" inputmode="email">
+<input type="password" id="pw" placeholder="密碼（至少 6 碼）" autocomplete="current-password">
+<div id="err"></div>
+<button class="btn add" onclick="lg(false)">登入</button>
+<button class="btn" style="width:100%;margin-top:8px;border:1px solid var(--line)" onclick="lg(true)">第一次使用：註冊</button></div></div>
 <header>
   <h1>永旭科技財務紀錄</h1>
+  <div class="sub" id="st"></div>
   <div class="bar">
     <button class="btn d" id="back" onclick="go(null)" hidden>‹ 所有工程</button>
     <button class="btn" id="addb" onclick="addP()">＋新增工程</button>
@@ -104,19 +117,79 @@ input[type=text],input[type=number]{width:100%;padding:10px;border:1px solid var
   <div class="foot">
     <button class="btn" onclick="bak()">複製備份資料</button>
     <button class="btn" onclick="res()">貼上還原資料</button>
+    <button class="btn" onclick="out()">登出</button>
   </div>
-  <div class="note" style="text-align:center;margin:10px 0 24px">資料只存在這支手機的瀏覽器內，建議定期備份。</div>
+  <div class="note" style="text-align:center;margin:10px 0 24px">已登入：<span id="who"></span>　資料會自動同步到雲端</div>
 </main>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
 const $=s=>document.querySelector(s),R=Math.round;
 const f=n=>(n<0?'-':'')+Math.abs(R(n)).toLocaleString('en-US');
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const uid=()=>Math.random().toString(36).slice(2,9);
+/* ====== 雲端同步設定：把 Firebase 給你的 const firebaseConfig = {...}; 整段貼來取代下面這一行 ====== */
+const firebaseConfig = {
+  apiKey: "AIzaSyDr-Yqs9ZSVBFhEdQVgOpmGN9SDAv1uhow",
+  authDomain: "yungshiu-finance.firebaseapp.com",
+  projectId: "yungshiu-finance",
+  storageBucket: "yungshiu-finance.firebasestorage.app",
+  messagingSenderId: "523041874551",
+  appId: "1:523041874551:web:ec4a5875de21fad2771c72"
+};
+/* ====== 設定結束 ====== */
 const COL=['#0B5C73','#D9731A','#3FA796','#8E5BA8','#E0B33A','#4F7CC1','#C0506B','#7A8F2B','#6B7B85','#2E9CCB'];
 let S;try{S=JSON.parse(localStorage.getItem('yx_fin'))}catch(e){}
 if(!S||!S.ps)S={ps:[],cur:null,rate:0};
-const save=()=>{try{localStorage.setItem('yx_fin',JSON.stringify(S))}catch(e){}};
+let last='',U=null,db=null,tm=null,ready=false;
+const st=t=>{$('#st').textContent=t};
+const sh=()=>JSON.stringify({ps:S.ps,rate:S.rate});
+const loc=()=>{try{localStorage.setItem('yx_fin',JSON.stringify(S))}catch(e){}};
+const save=()=>{if(U&&ready&&sh()!==last){S.ts=Date.now();push()}loc()};
+function push(){
+  clearTimeout(tm);st('同步中…');
+  tm=setTimeout(async()=>{
+    try{const d=sh();await db.doc('users/'+U.uid).set({data:d,ts:S.ts});last=d;loc();st('已同步')}
+    catch(e){st('同步失敗，稍後會重試')}
+  },700);
+}
+async function pull(first){
+  try{
+    const r=await db.doc('users/'+U.uid).get(),has=S.ps.length>0;
+    if(!r.exists){if(has){S.ts=Date.now();last='';push()}else{last=sh();st('已同步')}}
+    else{
+      const v=r.data();
+      if(v.ts>(S.ts||0)){
+        if(first&&has&&!S.ts&&!confirm('雲端已有資料。\n按「確定」＝使用雲端資料\n按「取消」＝用這台裝置的資料覆蓋雲端')){S.ts=Date.now();last='';push()}
+        else{const o=JSON.parse(v.data);S.ps=o.ps;S.rate=o.rate;S.ts=v.ts;last=v.data;if(!P())S.cur=null;loc();draw();st('已同步')}
+      }else if(v.ts<(S.ts||0)){last='';push()}
+      else{last=v.data;st('已同步')}
+    }
+  }catch(e){st('離線中，使用本機資料')}
+  ready=true;
+}
+const MSG={'auth/invalid-credential':'帳號或密碼錯誤','auth/wrong-password':'帳號或密碼錯誤','auth/user-not-found':'帳號或密碼錯誤','auth/email-already-in-use':'此信箱已註冊，請改按「登入」','auth/weak-password':'密碼至少 6 碼','auth/invalid-email':'信箱格式不正確','auth/admin-restricted-operation':'目前已關閉註冊','auth/network-request-failed':'網路連線失敗'};
+function lg(reg){
+  $('#err').textContent='';
+  const a=firebase.auth(),e=$('#em').value.trim(),p=$('#pw').value;
+  (reg?a.createUserWithEmailAndPassword(e,p):a.signInWithEmailAndPassword(e,p)).catch(x=>{$('#err').textContent=MSG[x.code]||'操作失敗，請稍後再試'});
+}
+function out(){
+  if(!confirm('登出後，這台裝置的本機資料會清除（雲端資料不會刪除）。確定登出？'))return;
+  ready=false;try{localStorage.removeItem('yx_fin')}catch(e){}
+  S={ps:[],cur:null,rate:0};firebase.auth().signOut();draw();
+}
+function init(){
+  if(firebaseConfig.apiKey.indexOf('貼')===0){st('尚未設定雲端同步（資料只存在本機）');return}
+  firebase.initializeApp(firebaseConfig);db=firebase.firestore();
+  firebase.auth().onAuthStateChanged(u=>{
+    U=u;$('#login').hidden=!!u;
+    if(u){$('#who').textContent=u.email;pull(true)}else st('');
+  });
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&U)pull(false)});
+}
 const P=()=>S.ps.find(p=>p.id==S.cur);
 
 /* icon + manifest（App 名稱與圖示） */
@@ -215,7 +288,7 @@ function res(){
   try{const o=JSON.parse(t);if(!o.ps)throw 0;S=o;save();draw();alert('已還原')}catch(e){alert('備份格式不正確')}
 }
 S.cur=null;
-draw();
+draw();init();
 </script>
 </body>
 </html>
