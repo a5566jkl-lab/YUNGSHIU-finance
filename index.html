@@ -18,7 +18,12 @@ html,body{margin:0}
 body{background:var(--bg);color:var(--ink);font:16px/1.5 "PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;padding:0 0 env(safe-area-inset-bottom)}
 header{background:var(--pri);color:#fff;padding:calc(14px + env(safe-area-inset-top)) 16px 14px}
 header h1{margin:0 0 10px;font-size:20px;letter-spacing:.06em}
-.bar{display:flex;gap:8px}
+.bar{display:flex;gap:8px;justify-content:space-between}
+.pj{display:grid;grid-template-columns:1fr auto;gap:2px 10px;width:100%;text-align:left;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px;font:inherit;color:inherit}
+.pj b{grid-column:1/-1;font-size:17px;margin-bottom:2px}
+.pj span{font-size:14px;color:var(--mute)}
+.pj span:last-child{text-align:right;font-weight:600}
+.pj span.pos{color:var(--good)}.pj span.neg{color:var(--bad)}
 select,input{font:inherit;color:inherit}
 select{flex:1;min-width:0;padding:9px;border-radius:8px;border:0}
 .btn{border:0;border-radius:8px;padding:9px 14px;font:inherit;background:#fff;color:var(--pri);font-weight:600}
@@ -57,15 +62,16 @@ input[type=text],input[type=number]{width:100%;padding:10px;border:1px solid var
 <header>
   <h1>永旭科技財務紀錄</h1>
   <div class="bar">
-    <select id="sel" onchange="S.cur=this.value;save();draw()"></select>
-    <button class="btn" onclick="addP()">＋新增工程</button>
+    <button class="btn d" id="back" onclick="go(null)" hidden>‹ 所有工程</button>
+    <button class="btn" id="addb" onclick="addP()">＋新增工程</button>
   </div>
 </header>
 <main>
+  <div id="list" hidden></div>
   <div id="empty" class="empty" hidden>還沒有任何工程<br><button class="btn" onclick="addP()">＋新增第一個工程</button></div>
   <div id="main" hidden>
     <div class="card">
-      <label class="f">工程名稱（可修改）<input type="text" id="pn" oninput="P().name=this.value;save();syncSel()"></label>
+      <label class="f">工程名稱（可修改）<input type="text" id="pn" oninput="P().name=this.value;save()"></label>
       <h2>工程款總額（收入）</h2>
       <div class="two">
         <label class="f">未稅金額<input type="number" inputmode="numeric" id="iEx" oninput="exc(this.value)"></label>
@@ -131,13 +137,15 @@ const P=()=>S.ps.find(p=>p.id==S.cur);
 function addP(){
   const n=prompt('工程名稱','新工程');if(n===null)return;
   const p={id:uid(),name:n||'新工程',ex:0,inc:0,items:[]};
-  S.ps.push(p);S.cur=p.id;save();draw();
+  S.ps.push(p);S.cur=p.id;save();draw();scrollTo(0,0);
 }
 function delP(){
   const p=P();if(!p||!confirm('確定刪除「'+p.name+'」？此動作無法復原'))return;
-  S.ps=S.ps.filter(x=>x.id!=p.id);S.cur=S.ps.length?S.ps[0].id:null;save();draw();
+  S.ps=S.ps.filter(x=>x.id!=p.id);S.cur=null;save();draw();
 }
-function syncSel(){$('#sel').innerHTML=S.ps.map(x=>`<option value="${x.id}" ${x.id==S.cur?'selected':''}>${esc(x.name||'未命名')}</option>`).join('')}
+function go(id){S.cur=id;save();draw();scrollTo(0,0)}
+function stat(p){let exp=0,inp=0;p.items.forEach(i=>{const a=R(i.amt||0);exp+=a;if(i.inv)inp+=a-R(a/1.05)});
+  const vat=p.inc-p.ex-inp,pre=p.ex-(exp-inp),it=Math.max(0,R(pre*(S.rate||0)/100));return{profit:p.inc-exp-vat-it}}
 function incc(v){const p=P();p.inc=R(+v||0);p.ex=R(p.inc/1.05);$('#iEx').value=p.ex||'';save();calc()}
 function exc(v){const p=P();p.ex=R(+v||0);p.inc=R(p.ex*1.05);$('#iInc').value=p.inc||'';save();calc()}
 function addI(){P().items.push({id:uid(),name:'',amt:0,note:'',inv:false});save();draw()}
@@ -145,9 +153,12 @@ function delI(id){const p=P();p.items=p.items.filter(i=>i.id!=id);save();draw()}
 function setI(id,k,v){P().items.find(i=>i.id==id)[k]=v;save();calc()}
 
 function draw(){
-  const p=P();syncSel();
-  $('#empty').hidden=!!p;$('#main').hidden=!p;
-  if(!p)return;
+  const p=P();
+  $('#back').hidden=!p;$('#addb').hidden=!!p;$('#main').hidden=!p;
+  $('#list').hidden=!!p||!S.ps.length;$('#empty').hidden=!!p||!!S.ps.length;
+  if(!p){
+    $('#list').innerHTML=S.ps.map(x=>{const t=stat(x);return `<button class="pj" onclick="go('${x.id}')"><b>${esc(x.name||'未命名')}</b><span>含稅 ${f(x.inc)}</span><span class="${t.profit>=0?'pos':'neg'}">利潤 ${f(t.profit)}</span></button>`}).join('');
+    return}
   $('#pn').value=p.name;$('#iEx').value=p.ex||'';$('#iInc').value=p.inc||'';$('#rate').value=S.rate||'';
   $('#rows').innerHTML=p.items.map(i=>`<div class="row">
     <div class="r1"><input type="text" placeholder="項目名稱" value="${esc(i.name)}" oninput="setI('${i.id}','name',this.value)">
@@ -203,7 +214,7 @@ function res(){
   const t=prompt('貼上備份內容');if(!t)return;
   try{const o=JSON.parse(t);if(!o.ps)throw 0;S=o;save();draw();alert('已還原')}catch(e){alert('備份格式不正確')}
 }
-if(!S.cur&&S.ps.length)S.cur=S.ps[0].id;
+S.cur=null;
 draw();
 </script>
 </body>
