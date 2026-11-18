@@ -35,7 +35,10 @@ label.f{display:block;font-size:13px;color:var(--mute);margin-bottom:10px}
 input[type=text],input[type=number]{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:#fff;margin-top:3px}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .row{border-top:1px solid var(--line);padding:10px 0}
-.r1{display:grid;grid-template-columns:1fr 110px 36px;gap:8px}
+.r1{display:grid;grid-template-columns:30px 1fr 112px 36px;gap:8px}
+.mv{display:flex;flex-direction:column;gap:2px}
+.mv button{flex:1;border:0;background:#DCEAF0;color:var(--pri);border-radius:6px;font-size:11px;padding:0}
+.mv button:disabled{opacity:.3}
 .r2{display:flex;gap:8px;margin-top:8px;align-items:center}
 .r2 input[type=text]{flex:1;margin:0}
 .r2 label{font-size:13px;color:var(--mute);white-space:nowrap}
@@ -87,8 +90,8 @@ input[type=text],input[type=number]{width:100%;padding:10px;border:1px solid var
       <label class="f">工程名稱（可修改）<input type="text" id="pn" oninput="P().name=this.value;save()"></label>
       <h2>工程款總額（收入）</h2>
       <div class="two">
-        <label class="f">未稅金額<input type="number" inputmode="numeric" id="iEx" oninput="exc(this.value)"></label>
-        <label class="f">含稅金額<input type="number" inputmode="numeric" id="iInc" oninput="incc(this.value)"></label>
+        <label class="f">未稅金額<input type="text" inputmode="numeric" id="iEx" oninput="cm(this);exc(this.value)"></label>
+        <label class="f">含稅金額<input type="text" inputmode="numeric" id="iInc" oninput="cm(this);incc(this.value)"></label>
       </div>
       <div class="note">兩欄擇一輸入，另一欄自動換算（含稅＝未稅×1.05，四捨五入至個位）。</div>
     </div>
@@ -217,10 +220,24 @@ function delP(){
   S.ps=S.ps.filter(x=>x.id!=p.id);S.cur=null;save();draw();
 }
 function go(id){S.cur=id;save();draw();scrollTo(0,0)}
+const num=v=>+String(v).replace(/\D/g,'')||0;
+const fv=n=>n?Math.round(n).toLocaleString('en-US'):'';
+function cm(el){
+  const c=el.selectionStart,n=el.value.slice(0,c).replace(/\D/g,'').length;
+  el.value=fv(num(el.value));
+  let k=0,pos=0;
+  if(n>0){for(pos=0;pos<el.value.length;pos++){if(/\d/.test(el.value[pos]))k++;if(k==n){pos++;break}}}
+  try{el.setSelectionRange(pos,pos)}catch(e){}
+}
+function mv(id,d){
+  const a=P().items,i=a.findIndex(x=>x.id==id),j=i+d;
+  if(j<0||j>=a.length)return;
+  [a[i],a[j]]=[a[j],a[i]];save();draw();
+}
 function stat(p){let exp=0,inp=0;p.items.forEach(i=>{const a=R(i.amt||0);exp+=a;if(i.inv)inp+=a-R(a/1.05)});
   const vat=p.inc-p.ex-inp,pre=p.ex-(exp-inp),it=Math.max(0,R(pre*(S.rate||0)/100));return{profit:p.inc-exp-vat-it}}
-function incc(v){const p=P();p.inc=R(+v||0);p.ex=R(p.inc/1.05);$('#iEx').value=p.ex||'';save();calc()}
-function exc(v){const p=P();p.ex=R(+v||0);p.inc=R(p.ex*1.05);$('#iInc').value=p.inc||'';save();calc()}
+function incc(v){const p=P();p.inc=num(v);p.ex=R(p.inc/1.05);$('#iEx').value=fv(p.ex);save();calc()}
+function exc(v){const p=P();p.ex=num(v);p.inc=R(p.ex*1.05);$('#iInc').value=fv(p.inc);save();calc()}
 function addI(){P().items.push({id:uid(),name:'',amt:0,note:'',inv:false});save();draw()}
 function delI(id){const p=P();p.items=p.items.filter(i=>i.id!=id);save();draw()}
 function setI(id,k,v){P().items.find(i=>i.id==id)[k]=v;save();calc()}
@@ -232,10 +249,10 @@ function draw(){
   if(!p){
     $('#list').innerHTML=S.ps.map(x=>{const t=stat(x);return `<button class="pj" onclick="go('${x.id}')"><b>${esc(x.name||'未命名')}</b><span>含稅 ${f(x.inc)}</span><span class="${t.profit>=0?'pos':'neg'}">利潤 ${f(t.profit)}</span></button>`}).join('');
     return}
-  $('#pn').value=p.name;$('#iEx').value=p.ex||'';$('#iInc').value=p.inc||'';$('#rate').value=S.rate||'';
-  $('#rows').innerHTML=p.items.map(i=>`<div class="row">
-    <div class="r1"><input type="text" placeholder="項目名稱" value="${esc(i.name)}" oninput="setI('${i.id}','name',this.value)">
-    <input type="number" inputmode="numeric" placeholder="金額" value="${i.amt||''}" oninput="setI('${i.id}','amt',+this.value||0)">
+  $('#pn').value=p.name;$('#iEx').value=fv(p.ex);$('#iInc').value=fv(p.inc);$('#rate').value=S.rate||'';
+  $('#rows').innerHTML=p.items.map((i,k)=>`<div class="row">
+    <div class="r1"><div class="mv"><button ${k?'':'disabled'} onclick="mv('${i.id}',-1)">▲</button><button ${k<p.items.length-1?'':'disabled'} onclick="mv('${i.id}',1)">▼</button></div><input type="text" placeholder="項目名稱" value="${esc(i.name)}" oninput="setI('${i.id}','name',this.value)">
+    <input type="text" inputmode="numeric" placeholder="金額" value="${fv(i.amt)}" oninput="cm(this);setI('${i.id}','amt',num(this.value))">
     <button class="x" onclick="delI('${i.id}')">✕</button></div>
     <div class="r2"><input type="text" placeholder="備註" value="${esc(i.note)}" oninput="setI('${i.id}','note',this.value)">
     <label><input type="checkbox" ${i.inv?'checked':''} onchange="setI('${i.id}','inv',this.checked)"> 含進項發票</label></div></div>`).join('');
