@@ -106,7 +106,7 @@ input[type=text],input[type=number]{width:100%;padding:10px;border:1px solid var
     <div class="card">
       <h2>損益結算</h2>
       <div id="sum"></div>
-      <label class="f" style="margin-top:12px">營利事業所得稅預估稅率 %（選填，一般公司為 20，不計入請填 0）<input type="number" inputmode="decimal" id="rate" oninput="S.rate=Math.max(0,+this.value||0);save();calc()"></label>
+      <div class="note">營利事業所得稅 ＝ 未稅工程款 × 7% × 20%，系統自動計算並計入成本。</div>
     </div>
 
     <div class="card">
@@ -235,7 +235,7 @@ function mv(id,d){
   [a[i],a[j]]=[a[j],a[i]];save();draw();
 }
 function stat(p){let exp=0,inp=0;p.items.forEach(i=>{const a=R(i.amt||0);exp+=a;if(i.inv)inp+=a-R(a/1.05)});
-  const vat=p.inc-p.ex-inp,pre=p.ex-(exp-inp),it=Math.max(0,R(pre*(S.rate||0)/100));return{profit:p.inc-exp-vat-it}}
+  const vat=p.inc-p.ex-inp,pre=p.ex-(exp-inp),it=R(p.ex*0.07*0.2);return{profit:p.inc-exp-vat-it}}
 function incc(v){const p=P();p.inc=num(v);p.ex=R(p.inc/1.05);$('#iEx').value=fv(p.ex);save();calc()}
 function exc(v){const p=P();p.ex=num(v);p.inc=R(p.ex*1.05);$('#iInc').value=fv(p.inc);save();calc()}
 function addI(){P().items.push({id:uid(),name:'',amt:0,note:'',inv:false});save();draw()}
@@ -249,7 +249,7 @@ function draw(){
   if(!p){
     $('#list').innerHTML=S.ps.map(x=>{const t=stat(x);return `<button class="pj" onclick="go('${x.id}')"><b>${esc(x.name||'未命名')}</b><span>含稅 ${f(x.inc)}</span><span class="${t.profit>=0?'pos':'neg'}">利潤 ${f(t.profit)}</span></button>`}).join('');
     return}
-  $('#pn').value=p.name;$('#iEx').value=fv(p.ex);$('#iInc').value=fv(p.inc);$('#rate').value=S.rate||'';
+  $('#pn').value=p.name;$('#iEx').value=fv(p.ex);$('#iInc').value=fv(p.inc);
   $('#rows').innerHTML=p.items.map((i,k)=>`<div class="row">
     <div class="r1"><div class="mv"><button ${k?'':'disabled'} onclick="mv('${i.id}',-1)">▲</button><button ${k<p.items.length-1?'':'disabled'} onclick="mv('${i.id}',1)">▼</button></div><input type="text" placeholder="項目名稱" value="${esc(i.name)}" oninput="setI('${i.id}','name',this.value)">
     <input type="text" inputmode="numeric" placeholder="金額" value="${fv(i.amt)}" oninput="cm(this);setI('${i.id}','amt',num(this.value))">
@@ -264,7 +264,7 @@ function calc(){
   let exp=0,inp=0,expEx=0;
   p.items.forEach(i=>{const a=R(i.amt||0);exp+=a;const t=i.inv?a-R(a/1.05):0;inp+=t;expEx+=a-t});
   const out=p.inc-p.ex,vat=out-inp,pre=p.ex-expEx;
-  const it=Math.max(0,R(pre*(S.rate||0)/100)),profit=p.inc-exp-vat-it;
+  const it=R(p.ex*0.07*0.2),profit=p.inc-exp-vat-it;
   const margin=p.inc?(profit/p.inc*100).toFixed(1):'0.0';
   $('#sum').innerHTML=`
    <div class="s"><span>工程款（含稅）</span><span>${f(p.inc)}</span></div>
@@ -272,7 +272,7 @@ function calc(){
    <div class="s sub"><span>開立發票銷項稅額（5%）</span><span>${f(out)}</span></div>
    <div class="s sub"><span>進項稅額（可扣抵）</span><span>− ${f(inp)}</span></div>
    <div class="s"><span>${vat>=0?'年底應繳營業稅':'可退營業稅'}</span><span>− ${f(vat)}</span></div>
-   ${it?`<div class="s"><span>營利事業所得稅預估</span><span>− ${f(it)}</span></div>`:''}
+   ${it?`<div class="s"><span>營利事業所得稅（未稅×7%×20%）</span><span>− ${f(it)}</span></div>`:''}
    <div class="profit"><span>利潤（${margin}%）</span><b class="${profit>=0?'pos':'neg'}">${f(profit)}</b></div>`;
   const sl=p.items.filter(i=>i.amt>0).map(i=>[i.name||'未命名',R(i.amt)]);
   if(vat>0)sl.push(['營業稅',vat]);
